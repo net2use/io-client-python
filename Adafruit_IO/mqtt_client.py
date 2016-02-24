@@ -34,7 +34,7 @@ class MQTTClient(object):
     using the MQTT protocol.
     """
 
-    def __init__(self, username, key, service_host='io.adafruit.com', service_port=1883):
+    def __init__(self, username, key, service_host='io.adafruit.com', service_port=1883, client_id=None, topic_fmt='adafruit_fmt'):
         """Create instance of MQTT client.
 
         Required parameters:
@@ -45,20 +45,22 @@ class MQTTClient(object):
         self._username = username
         self._service_host = service_host
         self._service_port = service_port
+        self._topic_fmt = topic_fmt
         # Initialize event callbacks to be None so they don't fire.
         self.on_connect    = None
         self.on_disconnect = None
         self.on_message    = None
         # Initialize MQTT client.
-        self._client = mqtt.Client()
+        self._client = mqtt.Client(client_id)
         self._client.username_pw_set(username, key)
         self._client.on_connect    = self._mqtt_connect
         self._client.on_disconnect = self._mqtt_disconnect
         self._client.on_message    = self._mqtt_message
         self._connected = False
+        self._disconnect_reason = None
 
     def _mqtt_connect(self, client, userdata, flags, rc):
-        logger.debug('Client on_connect called.')
+        logger.debug('Client on_connect called for %s.', self._service_host)
         # Check if the result code is success (0) or some error (non-zero) and
         # raise an exception if failed.
         if rc == 0:
@@ -66,45 +68,55 @@ class MQTTClient(object):
         else:
             # TODO: Make explicit exception classes for these failures:
             # 0: Connection successful 1: Connection refused - incorrect protocol version 2: Connection refused - invalid client identifier 3: Connection refused - server unavailable 4: Connection refused - bad username or password 5: Connection refused - not authorised 6-255: Currently unused.
-            raise RuntimeError('Error connecting to Adafruit IO with rc: {0}'.format(rc))
+            raise RuntimeError('Error connecting to {0} with rc: {1}'.format(self._service_host, rc))
         # Call the on_connect callback if available.
         if self.on_connect is not None:
             self.on_connect(self)
 
     def _mqtt_disconnect(self, client, userdata, rc):
-        logger.debug('Client on_disconnect called.')
+        logger.debug('Client on_disconnect called for %s.', self._service_host)
         self._connected = False
         # If this was an unexpected disconnect (non-zero result code) then just
         # log the RC as an error.  Continue on to call any disconnect handler
         # so clients can potentially recover gracefully.
         if rc != 0:
-            logger.debug('Unexpected disconnect with rc: {0}'.format(rc))
+            logger.debug('Unexpected disconnect from {0} with rc: {1}'.format(self._service_host, rc))
         # Call the on_disconnect callback if available.
         if self.on_disconnect is not None:
             self.on_disconnect(self)
 
     def _mqtt_message(self, client, userdata, msg):
-        logger.debug('Client on_message called.')
-        # Parse out the feed id and call on_message callback.
-        # Assumes topic looks like "username/feeds/id"
-        parsed_topic = msg.topic.split('/')
-        if self.on_message is not None and self._username == parsed_topic[0]:
-            feed = parsed_topic[2]
-            payload = '' if msg.payload is None else msg.payload.decode('utf-8')
-            self.on_message(self, feed, payload)
+        logger.debug('Client on_message called for %s.', self._service_host)
+        if self._topic_fmt == 'adafruit_fmt':
+            # Parse out the feed id and call on_message callback.
+            # Assumes topic looks like "username/feeds/id"
+            parsed_topic = msg.topic.split('/')
+            if self.on_message is not None and self._username == parsed_topic[0]:
+                feed = parsed_topic[2]
+                payload = '' if msg.payload is None else msg.payload.decode('utf-8')
+                self.on_message(self, feed, payload)
+        if self._topic_fmt == 'rawmqtt_fmt':
+            # Assumes topic looks like normal MQTT /ABC/ABC/ABC.  Pass full message topic.
+	    if self.on_message is not None:
+                payload = '' if msg.payload is None else msg.payload.decode('utf-8')
+                self.on_message(self, msg.topic, payload)
 
     def connect(self, **kwargs):
-        """Connect to the Adafruit.IO service.  Must be called before any loop
-        or publish operations are called.  Will raise an exception if a
+        """Connect to the Adafruit.IO or MQTT service.  Must be called before any loop
+        or publish operations are called.  Will raise an exception if a 
         connection cannot be made.  Optional keyword arguments will be passed
         to paho-mqtt client connect function.
         """
         # Skip calling connect if already connected.
         if self._connected:
             return
-        # Connect to the Adafruit IO MQTT service.
-        self._client.connect(self._service_host, port=self._service_port,
+        # Connect to the Adafruit IO MQTT service or normal MQTT service.
+        logger.debug('connect called for %s.', self._service_host)
+        self._client.connect(self._service_host, port=self._service_port, 
             keepalive=KEEP_ALIVE_SEC, **kwargs)
+        if rc != 0:
+            raise RuntimeError('connect error {0} with rc: {1}'.format(self._service_host, rc))
+
 
     def is_connected(self):
         """Returns True if connected to Adafruit.IO and False if not connected.
@@ -115,6 +127,12 @@ class MQTTClient(object):
         """Disconnect MQTT client if connected."""
         if self._connected:
             self._client.disconnect()
+
+    @property
+    def disconnect_reason(self):
+        """Returns the MQTT return code for the most recent disconnect
+        or None if there have been no disconnects."""
+        return self._disconnect_reason
 
     def loop_background(self):
         """Starts a background thread to listen for messages from Adafruit.IO
@@ -146,18 +164,30 @@ class MQTTClient(object):
         """
         self._client.loop(timeout=timeout_sec)
 
-    def subscribe(self, feed_id):
+    def subscribe(self, feed_id, qos=0):
         """Subscribe to changes on the specified feed.  When the feed is updated
         the on_message function will be called with the feed_id and new value.
         """
-        self._client.subscribe('{0}/feeds/{1}'.format(self._username, feed_id))
+	if self._topic_fmt == 'adafruit_fmt':
+            # Does Adafruit accept a different QOS?  Adding it anyway.
+	    self._client.subscribe('{0}/feeds/{1}'.format(self._username, feed_id), qos=qos)
+	if self._topic_fmt == 'rawmqtt_fmt':
+	    self._client.subscribe(feed_id, qos=qos)
 
-    def publish(self, feed_id, value):
+    def publish(self, feed_id, value, qos=0):
         """Publish a value to a specified feed.
 
         Required parameters:
         - feed_id: The id of the feed to update.
         - value: The new value to publish to the feed.
         """
-        self._client.publish('{0}/feeds/{1}'.format(self._username, feed_id),
-            payload=value)
+	if self._topic_fmt == 'adafruit_fmt':
+            # Does Adafruit accept a different QOS?  Adding it anyway.
+            # Pass username and parsed feed_id
+            self._client.publish('{0}/feeds/{1}'.format(self._username, feed_id), 
+                payload=value, qos=qos)
+            logger.debug('publish to Adafruit called for %s - %s - QOS %s.', feed_id, value, qos)
+	if self._topic_fmt == 'rawmqtt_fmt':
+            # Pass raw topic name(feed_id)
+            self._client.publish(feed_id, payload=value, qos=qos)
+            logger.debug('publish to MQTT called for %s - %s - QOS %s.', feed_id, value, qos)
