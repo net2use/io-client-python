@@ -34,7 +34,7 @@ class MQTTClient(object):
     using the MQTT protocol.
     """
 
-    def __init__(self, username, key, service_host='io.adafruit.com', service_port=1883, client_id=None, topic_fmt='adafruit_fmt'):
+    def __init__(self, username, key, service_host='io.adafruit.com', service_port=1883, client_id=None, topic_fmt='adafruit_fmt', instance_name=None):
         """Create instance of MQTT client.
 
         Required parameters:
@@ -46,6 +46,7 @@ class MQTTClient(object):
         self._service_host = service_host
         self._service_port = service_port
         self._topic_fmt = topic_fmt
+        self._instance_name = instance_name  # Can be used to label instance. Can be read in callback functions to see which client returned.
         # Initialize event callbacks to be None so they don't fire.
         self.on_connect    = None
         self.on_disconnect = None
@@ -189,3 +190,8 @@ class MQTTClient(object):
             # Pass raw topic name(feed_id)
             self._client.publish(feed_id, payload=value, qos=qos)
             logger.debug('publish to MQTT called for %s - %s - QOS %s.', feed_id, value, qos)
+
+
+    def tls_set(self, *args, **kwargs):
+        # Pass this function with all it's arguments
+        self._client.tls_set(*args, **kwargs)
