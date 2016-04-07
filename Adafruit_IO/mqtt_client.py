@@ -58,7 +58,6 @@ class MQTTClient(object):
         self._client.on_disconnect = self._mqtt_disconnect
         self._client.on_message    = self._mqtt_message
         self._connected = False
-        self._disconnect_reason = None
 
     def _mqtt_connect(self, client, userdata, flags, rc):
         logger.debug('Client on_connect called for %s.', self._service_host)
@@ -115,9 +114,6 @@ class MQTTClient(object):
         logger.debug('connect called for %s.', self._service_host)
         self._client.connect(self._service_host, port=self._service_port, 
             keepalive=KEEP_ALIVE_SEC, **kwargs)
-        if rc != 0:
-            raise RuntimeError('connect error {0} with rc: {1}'.format(self._service_host, rc))
-
 
     def is_connected(self):
         """Returns True if connected to Adafruit.IO and False if not connected.
@@ -128,12 +124,6 @@ class MQTTClient(object):
         """Disconnect MQTT client if connected."""
         if self._connected:
             self._client.disconnect()
-
-    @property
-    def disconnect_reason(self):
-        """Returns the MQTT return code for the most recent disconnect
-        or None if there have been no disconnects."""
-        return self._disconnect_reason
 
     def loop_background(self):
         """Starts a background thread to listen for messages from Adafruit.IO
