@@ -52,7 +52,7 @@ class MQTTClient(object):
         self.on_disconnect = None
         self.on_message    = None
         # Initialize MQTT client.
-        self._client = mqtt.Client(client_id)
+        self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1client_id)
         self._client.username_pw_set(username, key)
         self._client.on_connect    = self._mqtt_connect
         self._client.on_disconnect = self._mqtt_disconnect
