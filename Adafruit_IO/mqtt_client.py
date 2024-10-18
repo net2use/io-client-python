@@ -94,9 +94,9 @@ class MQTTClient(object):
                 feed = parsed_topic[2]
                 payload = '' if msg.payload is None else msg.payload.decode('utf-8')
                 self.on_message(self, feed, payload)
-        if self._topic_fmt == 'rawmqtt_fmt':
+        #if self._topic_fmt == 'rawmqtt_fmt':
             # Assumes topic looks like normal MQTT /ABC/ABC/ABC.  Pass full message topic.
-	    if self.on_message is not None:
+        if self.on_message is not None:
                 payload = '' if msg.payload is None else msg.payload.decode('utf-8')
                 self.on_message(self, msg.topic, payload)
 
