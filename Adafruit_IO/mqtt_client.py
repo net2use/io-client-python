@@ -167,11 +167,11 @@ class MQTTClient(object):
         """Subscribe to changes on the specified feed.  When the feed is updated
         the on_message function will be called with the feed_id and new value.
         """
-    if self._topic_fmt == 'adafruit_fmt':
+        if self._topic_fmt == 'adafruit_fmt':
             # Does Adafruit accept a different QOS?  Adding it anyway.
-        self._client.subscribe('{0}/feeds/{1}'.format(self._username, feed_id), qos=qos)
-    if self._topic_fmt == 'rawmqtt_fmt':
-        self._client.subscribe(feed_id, qos=qos)
+            self._client.subscribe('{0}/feeds/{1}'.format(self._username, feed_id), qos=qos)
+        if self._topic_fmt == 'rawmqtt_fmt':
+            self._client.subscribe(feed_id, qos=qos)
 
     def publish(self, feed_id, value, qos=0):
         """Publish a value to a specified feed.
@@ -181,13 +181,13 @@ class MQTTClient(object):
         - value: The new value to publish to the feed.
         """
     
-    if self._topic_fmt == 'adafruit_fmt':
+        if self._topic_fmt == 'adafruit_fmt':
             # Does Adafruit accept a different QOS?  Adding it anyway.
             # Pass username and parsed feed_id
             self._client.publish('{0}/feeds/{1}'.format(self._username, feed_id), 
                 payload=value, qos=qos)
             logger.debug('publish to Adafruit called for %s - %s - QOS %s.', feed_id, value, qos)
-    if self._topic_fmt == 'rawmqtt_fmt':
+        if self._topic_fmt == 'rawmqtt_fmt':
             # Pass raw topic name(feed_id)
             self._client.publish(feed_id, payload=value, qos=qos)
             logger.debug('publish to MQTT called for %s - %s - QOS %s.', feed_id, value, qos)
